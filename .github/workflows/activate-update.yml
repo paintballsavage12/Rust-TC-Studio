@@ -1,0 +1,66 @@
+name: Activate signed Rust TC Studio updates
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  activate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out release feed branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: true
+      - name: Download the published player EXE
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p .release
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern 'Rust_TC_Studio.exe' --dir .release --clobber
+      - name: Verify binary against owner-signed manifest
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, sys
+          tag = os.environ["TAG"]
+          if not tag.startswith("v"):
+              sys.exit("Release tag must start with v")
+          path = pathlib.Path("manifests") / (tag + ".json")
+          if not path.is_file():
+              sys.exit(f"Owner-signed manifest not staged: {path}")
+          m = json.loads(path.read_text(encoding="utf-8"))
+          binary = pathlib.Path(".release/Rust_TC_Studio.exe")
+          if not binary.is_file():
+              sys.exit("No public player EXE found in release")
+          expected_url = f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/releases/download/{tag}/Rust_TC_Studio.exe"
+          if m["version"] != tag[1:] or m["url"] != expected_url:
+              sys.exit("Update manifest version or URL does not match the published release")
+          if m["size"] != binary.stat().st_size:
+              sys.exit("Player EXE size differs from signed manifest")
+          if m["sha256"] != hashlib.sha256(binary.read_bytes()).hexdigest():
+              sys.exit("Player EXE hash differs from signed manifest")
+          if not isinstance(m.get("signature"), str) or len(m["signature"]) < 80:
+              sys.exit("Owner signature is missing")
+          pathlib.Path("update.json").write_text(json.dumps(m, indent=2) + "\n", encoding="utf-8")
+          print("Verified version, file name, URL, SHA-256, and file size.")
+          print("The app independently verifies the Ed25519 owner signature.")
+          PY
+      - name: Activate feed for existing installations
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add update.json
+          if git diff --cached --quiet; then
+            echo 'Feed already current'
+          else
+            git commit -m "Activate signed update ${{ github.event.release.tag_name }}"
+            git push origin HEAD:main
+          fi
