@@ -1,0 +1,109 @@
+name: Build and publish Rust TC Studio
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "manifests/*.json"
+      - ".github/workflows/build-and-publish.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rust-tc-release
+  cancel-in-progress: false
+
+jobs:
+  build-publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: true
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.2"
+          cache: false
+
+      - name: Select latest staged, owner-signed release
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          selected="$(find manifests -maxdepth 1 -type f -name 'v*.json' -printf '%f\n' | sort -V | tail -n 1)"
+          if [ -z "$selected" ]; then echo "No signed manifest found"; exit 1; fi
+          tag="${selected%.json}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "manifest=manifests/$selected" >> "$GITHUB_OUTPUT"
+          echo "Preparing $tag"
+
+      - name: Run client unit tests
+        working-directory: src
+        run: go test ./automation ./authclient ./license ./updates
+
+      - name: Compile standalone Windows EXE and embedded updater
+        working-directory: src
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: "0"
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 create_rsrc.py
+          go build -trimpath -ldflags='-H windowsgui -s -w' -o updater_windows_amd64.exe ./cmd/updater
+          go build -trimpath -ldflags='-H windowsgui -s -w' -o Rust_TC_Studio.exe .
+
+      - name: Verify the exact binary against the signed update manifest
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          MANIFEST: ${{ steps.version.outputs.manifest }}
+        run: |
+          python3 - <<'PY'
+          import hashlib,json,os,pathlib,sys
+          tag=os.environ["TAG"]; manifest=pathlib.Path(os.environ["MANIFEST"])
+          m=json.loads(manifest.read_text(encoding="utf-8"))
+          exe=pathlib.Path("src/Rust_TC_Studio.exe")
+          url=f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/releases/download/{tag}/Rust_TC_Studio.exe"
+          checks=[
+            (m.get("version")==tag[1:],"version"),
+            (m.get("url")==url,"download URL"),
+            (m.get("size")==exe.stat().st_size,"file size"),
+            (m.get("sha256")==hashlib.sha256(exe.read_bytes()).hexdigest(),"SHA-256"),
+            (isinstance(m.get("signature"),str) and len(m["signature"])>=80,"signature presence"),
+          ]
+          for ok,label in checks:
+            if not ok:sys.exit("Staged signed manifest mismatch: "+label)
+          pathlib.Path("update.json").write_text(json.dumps(m,indent=2)+"\n",encoding="utf-8")
+          print("Binary matches staged signed release",tag,exe.stat().st_size)
+          PY
+
+      - name: Publish or update GitHub Release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" src/Rust_TC_Studio.exe --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$TAG" src/Rust_TC_Studio.exe --repo "$GITHUB_REPOSITORY" --title "$TAG" --notes "Standalone Rust TC Studio test release. Login removed; Windows input and foreground process fixes. Crafting automation remains unverified in-game."
+          fi
+
+      - name: Activate signed feed after release asset exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add update.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Activate signed update ${{ steps.version.outputs.tag }}"
+            git push origin HEAD:main
+          fi
