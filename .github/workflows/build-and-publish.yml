@@ -56,8 +56,8 @@ jobs:
         run: |
           set -euo pipefail
           python3 create_rsrc.py
-          go build -trimpath -ldflags='-H windowsgui -s -w' -o updater_windows_amd64.exe ./cmd/updater
-          go build -trimpath -ldflags='-H windowsgui -s -w' -o Rust_TC_Studio.exe .
+          go build -buildvcs=false -trimpath -ldflags='-H windowsgui -s -w' -o updater_windows_amd64.exe ./cmd/updater
+          go build -buildvcs=false -trimpath -ldflags='-H windowsgui -s -w' -o Rust_TC_Studio.exe .
 
       - name: Verify the exact binary against the signed update manifest
         env:
