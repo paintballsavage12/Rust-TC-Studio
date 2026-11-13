@@ -27,7 +27,7 @@ import (
 
 const (
 	appTitle                          = "RUSTPILOT"
-	appVersion                        = "1.5.5"
+	appVersion                        = "1.5.6"
 	className                         = "RustTCStudioNativeWindow"
 	width                             = 1280
 	height                            = 820
@@ -48,6 +48,11 @@ const (
 	WM_LBUTTONUP                      = 0x0202
 	WM_MOUSEMOVE                      = 0x0200
 	WM_CTLCOLOREDIT                   = 0x0133
+	EN_CHANGE                         = 0x0300
+	EN_KILLFOCUS                      = 0x0200
+	EN_SETFOCUS                       = 0x0100
+	EM_SETLIMITTEXT                   = 0x00C5
+	EM_SETSEL                         = 0x00B1
 	WM_CTLCOLORSTATIC                 = 0x0138
 	WM_SETFONT                        = 0x0030
 	WM_APP                            = 0x8000
@@ -59,6 +64,8 @@ const (
 	WS_TABSTOP                        = 0x00010000
 	ES_AUTOHSCROLL                    = 0x0080
 	ES_PASSWORD                       = 0x0020
+	ES_NUMBER                         = 0x2000
+	ES_CENTER                         = 0x0001
 	SW_SHOW                           = 5
 	SW_HIDE                           = 0
 	SW_RESTORE                        = 9
@@ -192,6 +199,8 @@ type App struct {
 	inputReported                                       bool
 	hwnd, userEdit, passEdit, updateEdit, adminNameEdit uintptr
 	editBrush                                           uintptr
+	traderEdits                                         [4]uintptr
+	traderEditSyncing                                   bool
 	fonts                                               map[string]uintptr
 	cfg                                                 Config
 	authed                                              bool
@@ -483,6 +492,88 @@ func issueAdminCode(role string) {
 	refreshUI()
 }
 
+// Vending inputs are native EDIT controls so the user can click, select and type
+// numbers directly. No data comes from the Rust process or from memory scanning.
+// Each value is bounded; input confirmation becomes invalid when anything changes.
+const traderControlBase = 201
+
+var traderMaxima = [4]int{30, 40, 30000, 500000}
+var traderFieldsY = [4]int{440, 492, 544, 596}
+
+func traderValues() [4]int {
+	return [4]int{a.cfg.TraderFreeMain, a.cfg.TraderFreeBackpack, a.cfg.TraderStackRoom, a.cfg.TraderScrap}
+}
+
+func setTraderValue(index, v int) {
+	switch index {
+	case 0:
+		a.cfg.TraderFreeMain = v
+	case 1:
+		a.cfg.TraderFreeBackpack = v
+	case 2:
+		a.cfg.TraderStackRoom = v
+	case 3:
+		a.cfg.TraderScrap = v
+	}
+}
+
+func syncTraderEdits() {
+	a.traderEditSyncing = true
+	values := traderValues()
+	for i, edit := range a.traderEdits {
+		if edit != 0 {
+			setEdit(edit, fmt.Sprint(values[i]))
+		}
+	}
+	a.traderEditSyncing = false
+}
+
+func commitTraderEdit(i int, normalize bool) error {
+	if i < 0 || i >= len(a.traderEdits) || a.traderEdits[i] == 0 {
+		return nil
+	}
+	n, err := trader.ParseNumber(editValue(a.traderEdits[i]), traderMaxima[i])
+	if err != nil {
+		return fmt.Errorf("field %d: %w", i+1, err)
+	}
+	if traderValues()[i] != n {
+		setTraderValue(i, n)
+		a.cfg.TraderVerified = false
+		saveConfig()
+	}
+	if normalize {
+		a.traderEditSyncing = true
+		setEdit(a.traderEdits[i], fmt.Sprint(n))
+		a.traderEditSyncing = false
+	}
+	return nil
+}
+
+func commitAllTraderEdits() error {
+	// Validate every field first so invalid text cannot partially alter the plan.
+	var values [4]int
+	for i, edit := range a.traderEdits {
+		if edit == 0 {
+			return fmt.Errorf("numeric field unavailable")
+		}
+		n, err := trader.ParseNumber(editValue(edit), traderMaxima[i])
+		if err != nil {
+			return fmt.Errorf("field %d: %w", i+1, err)
+		}
+		values[i] = n
+	}
+	old := traderValues()
+	for i, v := range values {
+		setTraderValue(i, v)
+	}
+	if values != old {
+		a.cfg.TraderVerified = false
+	}
+	syncTraderEdits()
+	saveConfig()
+	return nil
+}
+
 func showEdits() {
 	// Player only enters a signed access code. Username is assigned by owner.
 	ShowWindow.Call(a.userEdit, SW_HIDE)
@@ -500,6 +591,17 @@ func showEdits() {
 			SetWindowPos.Call(a.adminNameEdit, 0, 297, 426, 548, 48, SWP_NOZORDER|SWP_NOACTIVATE)
 		} else {
 			ShowWindow.Call(a.adminNameEdit, SW_HIDE)
+		}
+	}
+	for i, edit := range a.traderEdits {
+		if edit == 0 {
+			continue
+		}
+		if a.authed && a.page == "vending" {
+			SetWindowPos.Call(edit, 0, 563, uintptr(traderFieldsY[i]+4), 91, 23, SWP_NOZORDER|SWP_NOACTIVATE)
+			ShowWindow.Call(edit, SW_SHOW)
+		} else {
+			ShowWindow.Call(edit, SW_HIDE)
 		}
 	}
 	if a.authed {
@@ -1392,6 +1494,9 @@ func action(id string) {
 		a.logs = nil
 		refreshUI()
 	case strings.HasPrefix(id, "page:"):
+		if a.page == "vending" {
+			_ = commitAllTraderEdits()
+		}
 		next := strings.TrimPrefix(id, "page:")
 		if next == "admin" && !a.isAdmin {
 			return
@@ -1443,7 +1548,12 @@ func action(id string) {
 	case id == "installUpdate":
 		startDownloadUpdate()
 	case id == "trader:confirm":
+		if err := commitAllTraderEdits(); err != nil {
+			toast("Enter valid numbers for all four fields (" + err.Error() + ").")
+			return
+		}
 		a.cfg.TraderVerified = !a.cfg.TraderVerified
+		saveConfig()
 		refreshUI()
 	case id == "trader:reset":
 		a.cfg.TraderVerified = false
@@ -1451,6 +1561,7 @@ func action(id string) {
 		a.cfg.TraderFreeBackpack = 0
 		a.cfg.TraderStackRoom = 0
 		a.cfg.TraderScrap = 0
+		syncTraderEdits()
 		saveConfig()
 		refreshUI()
 	case id == "start":
@@ -1474,6 +1585,12 @@ func action(id string) {
 			}
 		}
 	case strings.Contains(id, ":"):
+		if a.page == "vending" {
+			if err := commitAllTraderEdits(); err != nil {
+				toast("Correct the numeric entry first (" + err.Error() + ").")
+				return
+			}
+		}
 		p := strings.SplitN(id, ":", 2)
 		dir := 1
 		if p[1] == "minus" {
@@ -1579,7 +1696,23 @@ func wndproc(hwnd uintptr, msg uintptr, wparam, lparam uintptr) uintptr {
 			return 0
 		}
 	case WM_COMMAND:
-		if !a.authed && hi16(wparam) == 0x100 { // EN_SETFOCUS, no action
+		id := lo16(wparam)
+		if id >= traderControlBase && id < traderControlBase+len(a.traderEdits) && !a.traderEditSyncing {
+			i := id - traderControlBase
+			switch hi16(wparam) {
+			case EN_CHANGE:
+				a.cfg.TraderVerified = false
+				refreshUI()
+			case EN_KILLFOCUS:
+				// Keep incorrect text visible so it can be corrected; confirmation rejects it.
+				if commitTraderEdit(i, true) == nil {
+					refreshUI()
+				}
+			case EN_SETFOCUS:
+				// Clicking a value selects it for one-step replacement by typing.
+				SendMessage.Call(a.traderEdits[i], EM_SETSEL, 0, ^uintptr(0))
+			}
+			return 0
 		}
 	case WM_MOUSEMOVE:
 		x, y := lo16(lparam), hi16(lparam)
@@ -1666,6 +1799,16 @@ func main() {
 	SendMessage.Call(a.passEdit, WM_SETFONT, a.fonts["regular"], 1)
 	SendMessage.Call(a.updateEdit, WM_SETFONT, a.fonts["regular"], 1)
 	SendMessage.Call(a.adminNameEdit, WM_SETFONT, a.fonts["regular"], 1)
+	for i := range a.traderEdits {
+		edit, _, _ := CreateWindowEx.Call(0, uintptr(unsafe.Pointer(p16("EDIT"))), uintptr(unsafe.Pointer(p16(""))), WS_CHILD|WS_TABSTOP|ES_AUTOHSCROLL|ES_NUMBER|ES_CENTER, 563, uintptr(traderFieldsY[i]+4), 91, 23, hwnd, uintptr(traderControlBase+i), inst, 0)
+		a.traderEdits[i] = edit
+		if edit == 0 {
+			panic("unable to create vending numeric input")
+		}
+		SendMessage.Call(edit, WM_SETFONT, a.fonts["regularBold"], 1)
+		SendMessage.Call(edit, EM_SETLIMITTEXT, 6, 0)
+	}
+	syncTraderEdits()
 	setEdit(a.updateEdit, a.cfg.UpdateURL)
 	showEdits()
 	if a.authed {

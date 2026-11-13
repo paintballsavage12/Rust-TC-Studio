@@ -401,21 +401,25 @@ func v2TraderStepper(dc uintptr, label, kind string, value, y int) {
 	txt(dc, label, 300, y, 194, 32, cText, "smallBold")
 	v2SmallButton(dc, kind+":minus", "−", 513, y, 41, 31)
 	fillRound(dc, rect(562, y, 93, 31), 8, cBlack)
-	drawText(dc, fmt.Sprint(value), rect(563, y, 92, 31), cPurpleText, "regularBold", DT_CENTER|DT_VCENTER|DT_SINGLELINE)
+	// The native Windows number input sits above this rounded dark field.
+	// Draw the value only if the editable control could not be initialized.
+	if a.traderEdits[map[string]int{"traderMain": 0, "traderBag": 1, "traderStack": 2, "traderScrap": 3}[kind]] == 0 {
+		drawText(dc, fmt.Sprint(value), rect(563, y, 92, 31), cPurpleText, "regularBold", DT_CENTER|DT_VCENTER|DT_SINGLELINE)
+	}
 	v2SmallButton(dc, kind+":plus", "+", 662, y, 40, 31)
 }
 func v2Vending(dc uintptr) {
 	v2PageHeading(dc, "Outpost Vending Trader", "Inventory-space purchase planner  |  v"+appVersion)
 	v2Card(dc, 274, 263, 951, 103)
 	txt(dc, "TRADE PLANNER — MANUAL INVENTORY CHECK", 295, 274, 900, 32, cPurpleText, "cardTitle")
-	drawText(dc, "RustPilot does not read Rust inventory yet. Confirm the current slot counts, partial stack room and scrap yourself. This screen calculates a conservative purchase batch; it never clicks the vending machine.", rect(296, 310, 890, 50), cSubtle, "small", DT_WORDBREAK)
+	drawText(dc, "Type your free slots, room in partial stacks, and scrap (or use +/−). Confirm the values from Rust yourself. This planner never clicks the vending machine or reads inventory automatically.", rect(296, 310, 890, 50), cSubtle, "small", DT_WORDBREAK)
 
 	v2HeaderCard(dc, 274, 386, 456, 301, "YOUR CURRENT FREE SPACE")
 	v2TraderStepper(dc, "Free main slots", "traderMain", a.cfg.TraderFreeMain, 440)
 	v2TraderStepper(dc, "Free backpack slots", "traderBag", a.cfg.TraderFreeBackpack, 492)
 	v2TraderStepper(dc, "Room in partial stacks", "traderStack", a.cfg.TraderStackRoom, 544)
 	v2TraderStepper(dc, "Available scrap", "traderScrap", a.cfg.TraderScrap, 596)
-	txt(dc, "Changes reset confirmation. Base assumption: 250 frags for 25 scrap, 1,000 per slot.", 293, 646, 418, 35, cSubtle, "tiny")
+	txt(dc, "Click a value to type; +/− still work. Changes reset confirmation.", 293, 646, 418, 35, cSubtle, "tiny")
 
 	v2HeaderCard(dc, 747, 386, 478, 301, "PLANNED SAFE PURCHASE")
 	plan := currentTradePlan()
