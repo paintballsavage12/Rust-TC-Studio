@@ -91,7 +91,7 @@ func startDownloadUpdate() {
 	if updates.Verify(m) != nil {
 		return
 	}
-	if showMessage("Install Rust TC Studio "+m.Version+" now?\n\nThe app will close and restart after installation. Rust crafting does NOT pause when this app closes.\n\nYour local settings and owner-issued username configuration are preserved. Saved login sessions are preserved if you enabled Keep Me Logged In.", "INSTALL VERIFIED UPDATE", MB_YESNO|MB_ICONQUESTION) != IDYES {
+	if showMessage("Install RustPilot "+m.Version+" now?\n\nThe app will close and restart after installation. Rust crafting does NOT pause when this app closes.\n\nYour local RustPilot settings and hotkeys are preserved. This update uses the same signed GitHub feed.", "INSTALL VERIFIED UPDATE", MB_YESNO|MB_ICONQUESTION) != IDYES {
 		return
 	}
 	stopStack()

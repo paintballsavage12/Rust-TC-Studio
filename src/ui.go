@@ -22,6 +22,9 @@ var bannerPNG []byte
 //go:embed app_icon.png
 var iconPNG []byte
 
+//go:embed background.png
+var backgroundPNG []byte
+
 const (
 	cBlack      uint32 = 0x08040F
 	cSide       uint32 = 0x100719
@@ -56,6 +59,8 @@ type dibHeader struct {
 
 var bannerBytes []byte
 var bannerDIB dibHeader
+var backgroundBytes []byte
+var backgroundDIB dibHeader
 
 func initImageCache() {
 	im, _, err := image.Decode(bytes.NewReader(bannerPNG))
@@ -79,6 +84,35 @@ func initImageCache() {
 		}
 	}
 	bannerDIB = dibHeader{Size: 40, Width: int32(w), Height: -int32(h), Planes: 1, BitCount: 32, Compression: 0, SizeImage: uint32(w * h * 4)}
+	backgroundBytes, backgroundDIB = rgbaDIB(backgroundPNG)
+}
+
+func rgbaDIB(src []byte) ([]byte, dibHeader) {
+	im, _, err := image.Decode(bytes.NewReader(src))
+	if err != nil {
+		return nil, dibHeader{}
+	}
+	r := im.Bounds()
+	w, h := r.Dx(), r.Dy()
+	if w <= 0 || h <= 0 {
+		return nil, dibHeader{}
+	}
+	buf := make([]byte, w*h*4)
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			red, green, blue, alpha := im.At(r.Min.X+x, r.Min.Y+y).RGBA()
+			i := (y*w + x) * 4
+			buf[i], buf[i+1], buf[i+2], buf[i+3] = byte(blue>>8), byte(green>>8), byte(red>>8), byte(alpha>>8)
+		}
+	}
+	return buf, dibHeader{Size: 40, Width: int32(w), Height: -int32(h), Planes: 1, BitCount: 32, SizeImage: uint32(w * h * 4)}
+}
+
+func v2Background(dc uintptr) {
+	if len(backgroundBytes) == 0 {
+		return
+	}
+	g32.NewProc("StretchDIBits").Call(dc, 0, 0, width, height, 0, 0, uintptr(backgroundDIB.Width), uintptr(-backgroundDIB.Height), uintptr(unsafe.Pointer(&backgroundBytes[0])), uintptr(unsafe.Pointer(&backgroundDIB)), 0, SRCCOPY)
 }
 
 func v2Banner(dc uintptr) {
@@ -156,7 +190,8 @@ func v2Nav(dc uintptr) {
 	fillRect(dc, rect(0, bannerH, 245, height-bannerH), cSide)
 	fillRect(dc, rect(244, bannerH, 1, height-bannerH), cBorder)
 	items := []struct{ id, label, sym string }{
-		{"dashboard", "Dashboard", "▣"},
+		{"stacker", "TC Stacker", "▣"},
+		{"vending", "Vending Trader", "▤"},
 		{"hotkeys", "Hotkeys", "⌘"},
 		{"settings", "Settings", "⚙"},
 		{"setup", "Rust Setup", "</>"},
@@ -167,7 +202,7 @@ func v2Nav(dc uintptr) {
 
 	// Reserve a dedicated action row below the menu for update checks.
 	// Both the owner and player menus must fit above the account footer.
-	step := 52
+	step := 47
 	for i, e := range items {
 		y := 192 + i*step
 		r := rect(16, y, 214, 43)
@@ -198,8 +233,8 @@ func v2Nav(dc uintptr) {
 	}
 	v2Button(dc, "sidebarCheckUpdate", updateLabel, 20, 631, 205, 42, a.updateAvailable)
 	fillRect(dc, rect(23, 690, 198, 1), cBorder)
-	txt(dc, "RUST TC STUDIO", 26, 696, 190, 23, cLilac, "tiny")
-	txt(dc, "Automation Client", 25, 717, 201, 31, cText, "regularBold")
+	txt(dc, "RUSTPILOT", 26, 696, 190, 23, cLilac, "tiny")
+	txt(dc, "AUTOMATION SUITE", 25, 717, 201, 31, cText, "regularBold")
 	state := "READY"
 	sc := cGood
 	if a.refunding {
@@ -222,14 +257,17 @@ func v2PageHeading(dc uintptr, title, subtitle string) {
 func v2DrawApp(dc uintptr) {
 	a.hits = a.hits[:0]
 	fillRect(dc, rect(0, 0, width, height), cBlack)
+	v2Background(dc)
 	v2Banner(dc)
 	if !a.authed {
 		v2Login(dc)
 	} else {
 		v2Nav(dc)
 		switch a.page {
-		case "dashboard":
+		case "stacker", "dashboard":
 			v2Dashboard(dc)
+		case "vending":
+			v2Vending(dc)
 		case "hotkeys":
 			v2Hotkeys(dc)
 		case "settings":
@@ -359,6 +397,38 @@ func v2Dashboard(dc uintptr) {
 	txt(dc, "4 console commands • Copy individually", 863, 724, 360, 22, cSubtle, "small")
 	v2Button(dc, "page:setup", "OPEN RUST SETUP", 866, 751, 362, 35, false)
 }
+func v2Vending(dc uintptr) {
+	v2PageHeading(dc, "Outpost Vending Trader", "Planned automation module  |  preview only in v"+appVersion)
+	v2Card(dc, 274, 263, 951, 108)
+	txt(dc, "VENDING TRADER  /  DEVELOPMENT PREVIEW", 295, 275, 870, 32, cPurpleText, "cardTitle")
+	drawText(dc, "Buying, inventory scanning, and backpack transfers are not enabled in this release. Nothing on this page sends input to Rust.", rect(296, 312, 890, 50), cSubtle, "regular", DT_WORDBREAK)
+	v2HeaderCard(dc, 274, 388, 457, 272, "PLANNED TRADING WORKFLOW")
+	items := []string{
+		"1. Buy up to x10 when enough space exists",
+		"2. Reduce batch size to fit free slots",
+		"3. Move fragments into available backpack slots",
+		"4. Stop when full or scrap runs out",
+	}
+	for i, s := range items {
+		txt(dc, s, 295, 444+i*47, 416, 39, cText, "smallBold")
+	}
+	v2HeaderCard(dc, 747, 388, 478, 272, "REQUIRED SAFETY CHECKS")
+	checks := []string{
+		"Inventory space: NOT DETECTED",
+		"Backpack capacity: NOT DETECTED",
+		"Scrap balance: NOT DETECTED",
+		"Verified trade feedback: NOT AVAILABLE",
+	}
+	for i, s := range checks {
+		col := cWarn
+		txt(dc, s, 767, 444+i*47, 438, 39, col, "smallBold")
+	}
+	v2Card(dc, 274, 677, 951, 110)
+	txt(dc, "TRADING IS DISABLED FOR THIS UPDATER TEST", 295, 688, 880, 29, cWarn, "regularBold")
+	txt(dc, "Use TC Stacker now. Vending automation will only be enabled after in-game safety testing.", 296, 721, 888, 25, cSubtle, "small")
+	v2Button(dc, "page:stacker", "OPEN TC STACKER", 920, 745, 279, 35, false)
+}
+
 func v2KeyCard(dc uintptr, x, y, w, h int, title, description, id string, key uint32) {
 	v2Card(dc, x, y, w, h)
 	txt(dc, title, x+18, y+14, w-36, 33, cText, "regularBold")
@@ -579,19 +649,19 @@ func v2Logs(dc uintptr) {
 	txt(dc, "Session-only messages are cleared when you close the application.", 296, 749, 890, 25, cSubtle, "small")
 }
 func v2About(dc uintptr) {
-	v2PageHeading(dc, "About Rust TC Studio", "A standalone companion for normal Rust crafting console binds.")
+	v2PageHeading(dc, "About RustPilot", "A purple-themed Windows companion for Rust gameplay utilities.")
 	v2Card(dc, 274, 266, 954, 183)
-	txt(dc, "RUST TC STUDIO", 300, 284, 902, 52, cText, "title")
-	txt(dc, "PURPLE EDITION  /  VERSION "+appVersion, 300, 341, 871, 30, cPurpleText, "cardTitle")
+	txt(dc, "RUSTPILOT", 300, 284, 902, 52, cText, "title")
+	txt(dc, "STACK. TRADE. AUTOMATE.  /  VERSION "+appVersion, 300, 341, 871, 30, cPurpleText, "cardTitle")
 	txt(dc, "Written in Go  •  Native Win32  •  Offline  •  Windows 10/11 64-bit", 300, 395, 897, 26, cSubtle, "regular")
 	v2Card(dc, 274, 465, 954, 310)
 	txt(dc, "FEATURES & LIMITATIONS", 300, 483, 875, 39, cPurpleText, "cardTitle")
 	sentences := []string{
 		"• Configurable app controls and in-game Rust binds",
 		"• Queue, refresh, and cancellation requests while Rust has focus",
-		"• Simple client: no owner panel, login code or PIN service",
+		"• TC Stacker is available; Vending Trader is a disabled preview",
 		"• Does not read inventory or know the actual queued TC count",
-		"• Rust / server rules or anti-cheat may block simulated inputs",
+		"• Signed GitHub updater is retained from the prior release",
 		"• Stopping inputs does not pause existing crafting tasks",
 	}
 	for i, s := range sentences {

@@ -1,4 +1,4 @@
-name: Build and publish Rust TC Studio
+name: Build and publish RustPilot
 
 on:
   push:
@@ -57,7 +57,7 @@ jobs:
           set -euo pipefail
           python3 create_rsrc.py
           go build -buildvcs=false -trimpath -ldflags='-H windowsgui -s -w' -o updater_windows_amd64.exe ./cmd/updater
-          go build -buildvcs=false -trimpath -ldflags='-H windowsgui -s -w' -o Rust_TC_Studio.exe .
+          go build -buildvcs=false -trimpath -ldflags='-H windowsgui -s -w' -o RustPilot.exe .
 
       - name: Verify the exact binary against the signed update manifest
         env:
@@ -68,8 +68,8 @@ jobs:
           import hashlib,json,os,pathlib,sys
           tag=os.environ["TAG"]; manifest=pathlib.Path(os.environ["MANIFEST"])
           m=json.loads(manifest.read_text(encoding="utf-8"))
-          exe=pathlib.Path("src/Rust_TC_Studio.exe")
-          url=f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/releases/download/{tag}/Rust_TC_Studio.exe"
+          exe=pathlib.Path("src/RustPilot.exe")
+          url=f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/releases/download/{tag}/RustPilot.exe"
           checks=[
             (m.get("version")==tag[1:],"version"),
             (m.get("url")==url,"download URL"),
@@ -91,9 +91,9 @@ jobs:
         run: |
           set -euo pipefail
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$TAG" src/Rust_TC_Studio.exe --repo "$GITHUB_REPOSITORY" --clobber
+            gh release upload "$TAG" src/RustPilot.exe --repo "$GITHUB_REPOSITORY" --clobber
           else
-            gh release create "$TAG" src/Rust_TC_Studio.exe --repo "$GITHUB_REPOSITORY" --title "$TAG" --notes "Standalone Rust TC Studio test release. Login removed; Windows input and foreground process fixes. Crafting automation remains unverified in-game."
+            gh release create "$TAG" src/RustPilot.exe --repo "$GITHUB_REPOSITORY" --title "$TAG" --notes "RustPilot v1.5.4: purple branding, TC Stacker, disabled Vending Trader preview, and signed GitHub updater. Trading automation is not enabled; crafting requires in-game verification."
           fi
 
       - name: Activate signed feed after release asset exists

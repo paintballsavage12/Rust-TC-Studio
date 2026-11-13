@@ -24,8 +24,8 @@ import (
 )
 
 const (
-	appTitle                          = "RUST TC STUDIO"
-	appVersion                        = "1.5.3"
+	appTitle                          = "RUSTPILOT"
+	appVersion                        = "1.5.4"
 	className                         = "RustTCStudioNativeWindow"
 	width                             = 1280
 	height                            = 820
@@ -224,7 +224,7 @@ type App struct {
 	lastUpdateCheck                                     time.Time
 }
 
-var a = &App{page: "dashboard", fonts: map[string]uintptr{}}
+var a = &App{page: "stacker", fonts: map[string]uintptr{}}
 
 var u32 = syscall.NewLazyDLL("user32.dll")
 var g32 = syscall.NewLazyDLL("gdi32.dll")
@@ -1072,7 +1072,7 @@ func drawApp(hdc uintptr) {
 	}
 	drawSide(hdc)
 	switch a.page {
-	case "dashboard":
+	case "stacker", "dashboard":
 		drawDashboard(hdc)
 	case "hotkeys":
 		drawHotkeys(hdc)
@@ -1575,8 +1575,8 @@ func main() {
 	a.authed = true
 	a.isAdmin = false
 	a.ownerLocal = false
-	a.cfg.User = "Rust TC Studio"
-	a.page = "dashboard"
+	a.cfg.User = "RustPilot"
+	a.page = "stacker"
 	initImageCache()
 	SetProcessDPIAware.Call()
 	inst, _, _ := GetModuleHandle.Call(0)
