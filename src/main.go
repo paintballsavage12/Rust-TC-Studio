@@ -14,18 +14,20 @@ import (
 	"runtime"
 	"rusttcstudio/authclient"
 	"rusttcstudio/automation"
+	"rusttcstudio/housekeeping"
 	"strings"
 	"syscall"
 	"time"
 	"unsafe"
 
 	"rusttcstudio/license"
+	"rusttcstudio/trader"
 	"rusttcstudio/updates"
 )
 
 const (
 	appTitle                          = "RUSTPILOT"
-	appVersion                        = "1.5.4"
+	appVersion                        = "1.5.5"
 	className                         = "RustTCStudioNativeWindow"
 	width                             = 1280
 	height                            = 820
@@ -151,20 +153,25 @@ type PAINTSTRUCT struct {
 }
 
 type Config struct {
-	User        string `json:"user"`
-	Salt        string `json:"salt"`
-	Hash        string `json:"hash"`
-	KeyStart    uint32 `json:"key_start"`
-	KeyStop     uint32 `json:"key_stop"`
-	KeyRefund   uint32 `json:"key_refund"`
-	KeyQueue    uint32 `json:"key_queue"`
-	KeyRefresh  uint32 `json:"key_refresh"`
-	KeyCancel   uint32 `json:"key_cancel"`
-	QueueMs     int    `json:"queue_ms"`
-	RefreshMs   int    `json:"refresh_ms"`
-	RefundTries int    `json:"refund_tries"`
-	UpdateURL   string `json:"update_url,omitempty"`
-	AuthURL     string `json:"auth_url,omitempty"`
+	User               string `json:"user"`
+	Salt               string `json:"salt"`
+	Hash               string `json:"hash"`
+	KeyStart           uint32 `json:"key_start"`
+	KeyStop            uint32 `json:"key_stop"`
+	KeyRefund          uint32 `json:"key_refund"`
+	KeyQueue           uint32 `json:"key_queue"`
+	KeyRefresh         uint32 `json:"key_refresh"`
+	KeyCancel          uint32 `json:"key_cancel"`
+	QueueMs            int    `json:"queue_ms"`
+	RefreshMs          int    `json:"refresh_ms"`
+	RefundTries        int    `json:"refund_tries"`
+	UpdateURL          string `json:"update_url,omitempty"`
+	TraderFreeMain     int    `json:"trader_free_main,omitempty"`
+	TraderFreeBackpack int    `json:"trader_free_backpack,omitempty"`
+	TraderStackRoom    int    `json:"trader_stack_room,omitempty"`
+	TraderScrap        int    `json:"trader_scrap,omitempty"`
+	TraderVerified     bool   `json:"trader_verified,omitempty"`
+	AuthURL            string `json:"auth_url,omitempty"`
 }
 
 type hit struct {
@@ -1360,6 +1367,18 @@ func handleClick(x, y int) {
 		}
 	}
 }
+func clampInt(v, min, max int) int {
+	if v < min {
+		return min
+	}
+	if v > max {
+		return max
+	}
+	return v
+}
+func currentTradePlan() trader.Plan {
+	return trader.Calculate(trader.Inputs{Verified: a.cfg.TraderVerified, FreeMainSlots: a.cfg.TraderFreeMain, FreeBackpackSlots: a.cfg.TraderFreeBackpack, FreeSpaceInMainStacks: a.cfg.TraderStackRoom, Scrap: a.cfg.TraderScrap, FragmentsPerTrade: 250, ScrapPerTrade: 25, FragmentStackSize: 1000})
+}
 func action(id string) {
 	switch {
 	case id == "login":
@@ -1378,6 +1397,9 @@ func action(id string) {
 			return
 		}
 		a.page = next
+		if next == "vending" {
+			a.cfg.TraderVerified = false
+		} // never reuse stale game state
 		showEdits()
 		refreshUI()
 	case id == "issuePIN":
@@ -1420,6 +1442,17 @@ func action(id string) {
 		checkForUpdate(true)
 	case id == "installUpdate":
 		startDownloadUpdate()
+	case id == "trader:confirm":
+		a.cfg.TraderVerified = !a.cfg.TraderVerified
+		refreshUI()
+	case id == "trader:reset":
+		a.cfg.TraderVerified = false
+		a.cfg.TraderFreeMain = 0
+		a.cfg.TraderFreeBackpack = 0
+		a.cfg.TraderStackRoom = 0
+		a.cfg.TraderScrap = 0
+		saveConfig()
+		refreshUI()
 	case id == "start":
 		startStack()
 	case id == "stop":
@@ -1447,6 +1480,18 @@ func action(id string) {
 			dir = -1
 		}
 		switch p[0] {
+		case "traderMain":
+			a.cfg.TraderFreeMain = clampInt(a.cfg.TraderFreeMain+dir, 0, 30)
+			a.cfg.TraderVerified = false
+		case "traderBag":
+			a.cfg.TraderFreeBackpack = clampInt(a.cfg.TraderFreeBackpack+dir, 0, 40)
+			a.cfg.TraderVerified = false
+		case "traderScrap":
+			a.cfg.TraderScrap = clampInt(a.cfg.TraderScrap+dir*25, 0, 500000)
+			a.cfg.TraderVerified = false
+		case "traderStack":
+			a.cfg.TraderStackRoom = clampInt(a.cfg.TraderStackRoom+dir*250, 0, 30000)
+			a.cfg.TraderVerified = false
 		case "queueMs":
 			a.cfg.QueueMs += dir * 100
 			if a.cfg.QueueMs < 300 {
@@ -1631,6 +1676,16 @@ func main() {
 	}
 	ShowWindow.Call(hwnd, SW_SHOW)
 	UpdateWindow.Call(hwnd)
+	// Application has launched successfully. Only now remove exact-name
+	// updater backups; keep all saved settings and unrelated files intact.
+	if executable, err := os.Executable(); err == nil {
+		if count, err := housekeeping.CleanupInstalled(executable, time.Now()); err == nil && count > 0 {
+			addLog(fmt.Sprintf("Removed %d obsolete update backup(s)", count))
+		}
+	}
+	if a.configPath != "" {
+		housekeeping.CleanupHelpers(filepath.Dir(a.configPath), time.Now())
+	}
 	SetTimer.Call(hwnd, 1, 30, 0)
 	if a.cfg.UpdateURL != "" {
 		checkForUpdate(false)

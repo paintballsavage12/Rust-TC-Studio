@@ -397,36 +397,47 @@ func v2Dashboard(dc uintptr) {
 	txt(dc, "4 console commands • Copy individually", 863, 724, 360, 22, cSubtle, "small")
 	v2Button(dc, "page:setup", "OPEN RUST SETUP", 866, 751, 362, 35, false)
 }
+func v2TraderStepper(dc uintptr, label, kind string, value, y int) {
+	txt(dc, label, 300, y, 194, 32, cText, "smallBold")
+	v2SmallButton(dc, kind+":minus", "−", 513, y, 41, 31)
+	fillRound(dc, rect(562, y, 93, 31), 8, cBlack)
+	drawText(dc, fmt.Sprint(value), rect(563, y, 92, 31), cPurpleText, "regularBold", DT_CENTER|DT_VCENTER|DT_SINGLELINE)
+	v2SmallButton(dc, kind+":plus", "+", 662, y, 40, 31)
+}
 func v2Vending(dc uintptr) {
-	v2PageHeading(dc, "Outpost Vending Trader", "Planned automation module  |  preview only in v"+appVersion)
-	v2Card(dc, 274, 263, 951, 108)
-	txt(dc, "VENDING TRADER  /  DEVELOPMENT PREVIEW", 295, 275, 870, 32, cPurpleText, "cardTitle")
-	drawText(dc, "Buying, inventory scanning, and backpack transfers are not enabled in this release. Nothing on this page sends input to Rust.", rect(296, 312, 890, 50), cSubtle, "regular", DT_WORDBREAK)
-	v2HeaderCard(dc, 274, 388, 457, 272, "PLANNED TRADING WORKFLOW")
-	items := []string{
-		"1. Buy up to x10 when enough space exists",
-		"2. Reduce batch size to fit free slots",
-		"3. Move fragments into available backpack slots",
-		"4. Stop when full or scrap runs out",
+	v2PageHeading(dc, "Outpost Vending Trader", "Inventory-space purchase planner  |  v"+appVersion)
+	v2Card(dc, 274, 263, 951, 103)
+	txt(dc, "TRADE PLANNER — MANUAL INVENTORY CHECK", 295, 274, 900, 32, cPurpleText, "cardTitle")
+	drawText(dc, "RustPilot does not read Rust inventory yet. Confirm the current slot counts, partial stack room and scrap yourself. This screen calculates a conservative purchase batch; it never clicks the vending machine.", rect(296, 310, 890, 50), cSubtle, "small", DT_WORDBREAK)
+
+	v2HeaderCard(dc, 274, 386, 456, 301, "YOUR CURRENT FREE SPACE")
+	v2TraderStepper(dc, "Free main slots", "traderMain", a.cfg.TraderFreeMain, 440)
+	v2TraderStepper(dc, "Free backpack slots", "traderBag", a.cfg.TraderFreeBackpack, 492)
+	v2TraderStepper(dc, "Room in partial stacks", "traderStack", a.cfg.TraderStackRoom, 544)
+	v2TraderStepper(dc, "Available scrap", "traderScrap", a.cfg.TraderScrap, 596)
+	txt(dc, "Changes reset confirmation. Base assumption: 250 frags for 25 scrap, 1,000 per slot.", 293, 646, 418, 35, cSubtle, "tiny")
+
+	v2HeaderCard(dc, 747, 386, 478, 301, "PLANNED SAFE PURCHASE")
+	plan := currentTradePlan()
+	if !a.cfg.TraderVerified {
+		txt(dc, "UNVERIFIED INPUT", 768, 443, 434, 36, cWarn, "cardTitle")
+		txt(dc, "Check Rust inventory and confirm the values below.", 767, 485, 428, 55, cSubtle, "regular")
+	} else if plan.Ready {
+		txt(dc, fmt.Sprintf("UP TO  x%d TRADES", plan.MaxBatch), 768, 440, 432, 43, cGood, "cardTitle")
+		txt(dc, fmt.Sprintf("Est. metal fragments:  %d", plan.Fragments), 767, 505, 436, 30, cText, "regularBold")
+		txt(dc, fmt.Sprintf("Est. scrap cost:  %d", plan.ScrapCost), 767, 541, 436, 30, cText, "regularBold")
+		txt(dc, fmt.Sprintf("Backpack capacity:  %d frags", plan.BackpackCapacity), 767, 576, 436, 29, cSubtle, "smallBold")
+	} else {
+		txt(dc, "PAUSE — DO NOT BUY", 768, 440, 432, 43, cWarn, "cardTitle")
+		drawText(dc, plan.Reason, rect(768, 498, 420, 75), cSubtle, "regular", DT_WORDBREAK)
 	}
-	for i, s := range items {
-		txt(dc, s, 295, 444+i*47, 416, 39, cText, "smallBold")
-	}
-	v2HeaderCard(dc, 747, 388, 478, 272, "REQUIRED SAFETY CHECKS")
-	checks := []string{
-		"Inventory space: NOT DETECTED",
-		"Backpack capacity: NOT DETECTED",
-		"Scrap balance: NOT DETECTED",
-		"Verified trade feedback: NOT AVAILABLE",
-	}
-	for i, s := range checks {
-		col := cWarn
-		txt(dc, s, 767, 444+i*47, 438, 39, col, "smallBold")
-	}
-	v2Card(dc, 274, 677, 951, 110)
-	txt(dc, "TRADING IS DISABLED FOR THIS UPDATER TEST", 295, 688, 880, 29, cWarn, "regularBold")
-	txt(dc, "Use TC Stacker now. Vending automation will only be enabled after in-game safety testing.", 296, 721, 888, 25, cSubtle, "small")
-	v2Button(dc, "page:stacker", "OPEN TC STACKER", 920, 745, 279, 35, false)
+	txt(dc, "Estimate only • actual stock/prices and transfers are not detected.", 767, 640, 437, 31, cSubtle, "tiny")
+
+	v2Card(dc, 274, 704, 951, 103)
+	txt(dc, "AUTO TRADING & BACKPACK TRANSFER: NOT ENABLED", 295, 712, 875, 28, cWarn, "regularBold")
+	v2Button(dc, "trader:confirm", "CONFIRM SPACE", 296, 753, 214, 37, a.cfg.TraderVerified)
+	v2Button(dc, "trader:reset", "RESET", 523, 753, 124, 37, false)
+	txt(dc, "Never trust old slot counts; reconfirm after each trade.", 673, 751, 514, 38, cSubtle, "small")
 }
 
 func v2KeyCard(dc uintptr, x, y, w, h int, title, description, id string, key uint32) {

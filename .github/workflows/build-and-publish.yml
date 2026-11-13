@@ -44,7 +44,7 @@ jobs:
 
       - name: Run client unit tests
         working-directory: src
-        run: go test ./automation ./authclient ./license ./updates
+        run: go test ./automation ./authclient ./license ./updates ./housekeeping ./trader
 
       - name: Compile standalone Windows EXE and embedded updater
         working-directory: src
@@ -93,7 +93,7 @@ jobs:
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$TAG" src/RustPilot.exe --repo "$GITHUB_REPOSITORY" --clobber
           else
-            gh release create "$TAG" src/RustPilot.exe --repo "$GITHUB_REPOSITORY" --title "$TAG" --notes "RustPilot v1.5.4: purple branding, TC Stacker, disabled Vending Trader preview, and signed GitHub updater. Trading automation is not enabled; crafting requires in-game verification."
+            gh release create "$TAG" src/RustPilot.exe --repo "$GITHUB_REPOSITORY" --title "$TAG" --notes "RustPilot v1.5.5: updater backup cleanup after successful launch, interactive safe Vending Trader batch calculator. No unattended vending trades or backpack transfers enabled. TC Stacker requires in-game verification."
           fi
 
       - name: Activate signed feed after release asset exists
