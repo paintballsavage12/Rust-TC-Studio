@@ -358,7 +358,7 @@ func v2Dashboard(dc uintptr) {
 	}{
 		{"Queue TC (Craft)", "queue", a.cfg.KeyQueue},
 		{"Refresh Queue", "refresh", a.cfg.KeyRefresh},
-		{"Cancel TC (Refund)", "cancel", a.cfg.KeyCancel},
+		{"Cancel TC Batches (Refund)", "cancel", a.cfg.KeyCancel},
 	}
 	for i, r := range binds {
 		y := 462 + i*47
@@ -480,28 +480,32 @@ func v2Settings(dc uintptr) {
 	v2PageHeading(dc, "Automation settings", "Customize the request intervals and refund limit for your local profile.")
 	v2Setting(dc, 267, "Queue attempt interval", "How often another TC craft request is sent if Rust remains focused.", a.cfg.QueueMs, "ms", "queueMs")
 	v2Setting(dc, 410, "Craft refresh interval", "Attempts to refresh the TC crafting timer. Actual behavior depends on Rust.", a.cfg.RefreshMs, "ms", "refreshMs")
-	v2Setting(dc, 553, "Refund attempts", "How many cancellation requests are sent after you confirm a refund.", a.cfg.RefundTries, "tries", "refundTries")
+	v2Setting(dc, 553, "Refund attempts", "In-game F8 sends repeated cancels for TC batches of 1–10. No popup.", a.cfg.RefundTries, "tries", "refundTries")
 	v2Card(dc, 274, 697, 954, 98)
 	txt(dc, "IMPORTANT", 296, 707, 164, 25, cWarn, "smallBold")
 	drawText(dc, "Rust crafting does not stop when you alt-tab or disable the app. This program does not read your wood count, scan memory, or bypass anti-cheat protections.", rect(295, 737, 896, 53), cSubtle, "small", DT_WORDBREAK)
 }
 func v2Setup(dc uintptr) {
-	v2PageHeading(dc, "Rust bind setup", "Copy each command separately into the Rust F1 console, then press Enter.")
+	v2PageHeading(dc, "Rust bind setup", "v1.5.7: reinstall the Refresh and Cancel F1 binds once to enable the refund fix.")
 	v2Card(dc, 274, 265, 954, 90)
 	txt(dc, "STEP 1  •  OPEN RUST", 296, 278, 560, 30, cPurpleText, "regularBold")
 	txt(dc, "Join a server, open F1, and paste the commands below one at a time.", 296, 311, 889, 29, cSubtle, "regular")
 	v2Card(dc, 274, 369, 954, 333)
-	txt(dc, "STEP 2  •  INSTALL IN-GAME BINDS", 296, 380, 788, 30, cPurpleText, "regularBold")
+	txt(dc, "STEP 2  •  UPDATE IN-GAME BINDS (REQUIRED ONCE)", 296, 380, 788, 30, cPurpleText, "regularBold")
 	lines := strings.Split(strings.ReplaceAll(rustBindCommands(), "\r\n", "\n"), "\n")
 	for i, line := range lines {
 		y := 420 + i*67
 		fillRound(dc, rect(290, y, 772, 56), 9, cBlack)
-		drawText(dc, line, rect(306, y+5, 736, 49), cText, "mono", DT_WORDBREAK)
+		display := line
+		if len(display) > 65 {
+			display = display[:62] + "... (COPY FULL)"
+		}
+		drawText(dc, display, rect(306, y+5, 736, 49), cText, "mono", DT_WORDBREAK)
 		v2Button(dc, fmt.Sprintf("copyline:%d", i), "COPY", 1081, y+8, 124, 39, false)
 	}
 	v2Card(dc, 274, 715, 954, 86)
 	txt(dc, "STEP 3  •  TEST WITH A SMALL AMOUNT OF WOOD", 295, 725, 870, 27, cPurpleText, "regularBold")
-	txt(dc, "Try F6 in Rust. Watch the craft queue. Press F7 to stop inputs, and F8 to cancel.", 295, 756, 902, 28, cSubtle, "small")
+	txt(dc, "In Rust: F6 stack, F7 stop, F8 refund all TC batches without a popup. Wood can drop if full.", 295, 756, 902, 28, cSubtle, "small")
 }
 
 func v2Updates(dc uintptr) {

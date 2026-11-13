@@ -44,7 +44,7 @@ jobs:
 
       - name: Run client unit tests
         working-directory: src
-        run: go test ./automation ./authclient ./license ./updates ./housekeeping ./trader
+        run: go test ./automation ./authclient ./license ./updates ./housekeeping ./trader ./rustbind
 
       - name: Compile standalone Windows EXE and embedded updater
         working-directory: src
@@ -93,7 +93,7 @@ jobs:
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$TAG" src/RustPilot.exe --repo "$GITHUB_REPOSITORY" --clobber
           else
-            gh release create "$TAG" src/RustPilot.exe --repo "$GITHUB_REPOSITORY" --title "$TAG" --notes "RustPilot v1.5.5: updater backup cleanup after successful launch, interactive safe Vending Trader batch calculator. No unattended vending trades or backpack transfers enabled. TC Stacker requires in-game verification."
+            gh release create "$TAG" src/RustPilot.exe --repo "$GITHUB_REPOSITORY" --title "$TAG" --notes "RustPilot $TAG: F8 TC refund now runs without a confirmation popup and the new cancel bind sweeps batch sizes 1-10. Reinstall the Refresh and Cancel Rust F1 binds once. Wood may drop when inventory is full. Actual in-game refunds remain unverified."
           fi
 
       - name: Activate signed feed after release asset exists

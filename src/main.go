@@ -15,6 +15,7 @@ import (
 	"rusttcstudio/authclient"
 	"rusttcstudio/automation"
 	"rusttcstudio/housekeeping"
+	"rusttcstudio/rustbind"
 	"strings"
 	"syscall"
 	"time"
@@ -27,7 +28,7 @@ import (
 
 const (
 	appTitle                          = "RUSTPILOT"
-	appVersion                        = "1.5.6"
+	appVersion                        = "1.5.7"
 	className                         = "RustTCStudioNativeWindow"
 	width                             = 1280
 	height                            = 820
@@ -799,7 +800,7 @@ func rustBindCommands() string {
 		}
 		return strings.ToLower(strings.ReplaceAll(vkName(v), " ", ""))
 	}
-	return fmt.Sprintf("bind %s \"craft.add %s 1\"\r\nbind %s \"craft.add %s 1;craft.cancel %s;craft.add %s 1\"\r\nbind %s \"craft.cancel %s\"\r\nwritecfg", key(a.cfg.KeyQueue), TCID, key(a.cfg.KeyRefresh), TCID, TCID, TCID, key(a.cfg.KeyCancel), TCID)
+	return rustbind.Commands(key(a.cfg.KeyQueue), key(a.cfg.KeyRefresh), key(a.cfg.KeyCancel), TCID)
 }
 func copyClipboard(s string) bool {
 	r, _, _ := OpenClipboard.Call(a.hwnd)
@@ -991,25 +992,34 @@ func stopStack() {
 		refreshUI()
 	}
 }
+
+// refund begins a bounded batch of in-game TC cancellation sweeps.
+// F8 must never display a modal dialog or steal focus from Rust.
+// RustPilot does not inspect the craft queue: this is an attempt, not a verified refund.
 func refund() {
-	if !a.authed {
+	if !a.authed || a.refunding {
 		return
 	}
+	// Remember whether F8 was pressed inside Rust BEFORE stopping the stacker.
+	// StopStack is safe here: it releases held keys and never switches windows.
+	inGame := rustForeground()
 	stopStack()
-	if showMessage("Cancel queued TCs and return their wood?\n\nThis may DROP wood if inventory slots are full. Make space first.\n\nThe app can only attempt cancellation; it cannot see your queue.\n\nContinue?", "CONFIRM WOOD REFUND", MB_YESNO|MB_ICONWARNING) != IDYES {
-		return
-	}
 	h := findRustWindow()
 	if h == 0 {
-		toast("Rust not detected. Launch and join a server first.")
+		addLog("Refund not started: Rust window not detected")
+		toast("Rust not detected. Join a server first.")
 		return
 	}
 	a.rustWnd = h
 	a.refunding = true
 	a.refundLeft = a.cfg.RefundTries
 	a.autoEngine.StartRefund(time.Now(), a.cfg.RefundTries)
-	SetForegroundWindow.Call(h)
-	addLog(fmt.Sprintf("Requested up to %d cancellation attempts", a.cfg.RefundTries))
+	// The toolbar button can be used from the app; return to Rust in that case.
+	// Never change window focus if the user's F8 hotkey originated in Rust.
+	if !inGame {
+		SetForegroundWindow.Call(h)
+	}
+	addLog(fmt.Sprintf("TC refund started in-game: up to %d sweeps across quantity 1–10 queues. Keep inventory space free; excess wood can drop.", a.cfg.RefundTries))
 	refreshUI()
 }
 func tick() {
@@ -1069,7 +1079,7 @@ func tick() {
 			a.refundLeft = a.autoEngine.Remaining()
 			if !a.autoEngine.Refunding() {
 				a.refunding = false
-				addLog("Cancel inputs sent. Check wood in inventory/ground.")
+				addLog("TC refund sweeps dispatched; check the in-game queue and inventory/ground. Success is not directly detectable.")
 			}
 		}
 		if !a.inputReported {
@@ -1361,7 +1371,7 @@ func drawHotkeys(hdc uintptr) {
 	txt(hdc, "APP CONTROLS", 306, 156, 347, 27, colOrange, "smallBold")
 	hotkeyRow(hdc, 304, 190, 366, "Start / Pause", "Toggle the stacking loop", "start", a.cfg.KeyStart)
 	hotkeyRow(hdc, 697, 190, 366, "Stop", "Stop sending inputs", "stop", a.cfg.KeyStop)
-	hotkeyRow(hdc, 304, 310, 366, "Refund wood", "Cancel queued TCs (confirm)", "refund", a.cfg.KeyRefund)
+	hotkeyRow(hdc, 304, 310, 366, "Refund wood", "Cancel queued TCs in-game; no popup", "refund", a.cfg.KeyRefund)
 	txt(hdc, "IN-GAME BIND KEYS", 306, 439, 500, 29, colOrange, "smallBold")
 	hotkeyRow(hdc, 304, 473, 240, "Queue TC", "Craft from wood", "queue", a.cfg.KeyQueue)
 	hotkeyRow(hdc, 565, 473, 240, "Refresh TC", "Reset TC timer", "refresh", a.cfg.KeyRefresh)
@@ -1390,7 +1400,7 @@ func drawSettings(hdc uintptr) {
 	sectionTitle(hdc, "Automation settings", "Saved automatically to your local profile.")
 	settingRow(hdc, 304, 172, "Queue attempt interval", "Try to queue another TC as wood becomes available.", a.cfg.QueueMs, "ms", "queueMs")
 	settingRow(hdc, 304, 298, "Craft refresh interval", "How often to reset the active TC timer.", a.cfg.RefreshMs, "ms", "refreshMs")
-	settingRow(hdc, 304, 424, "Refund attempts", "Maximum cancel commands to send when refunding.", a.cfg.RefundTries, "tries", "refundTries")
+	settingRow(hdc, 304, 424, "Refund attempts", "Number of in-game cancellation sweeps (TC batch sizes 1–10).", a.cfg.RefundTries, "tries", "refundTries")
 	card(hdc, 304, 557, 760, 110)
 	pill(hdc, "SAFETY", 328, 575, 94, true)
 	txt(hdc, "Auto-pauses when Rust loses focus. No game memory access,", 444, 566, 600, 30, colMuted, "small")
