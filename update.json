@@ -1,7 +1,7 @@
 {
-  "version": "1.5.6",
-  "url": "https://github.com/paintballsavage12/Rust-TC-Studio/releases/download/v1.5.6/RustPilot.exe",
-  "size": 9426944,
-  "sha256": "cd5eff9bef8690e0a8c619356e685e883d76e28489a3ac91e6bc6da3bb10f1dc",
-  "signature": "GMkQ0WPS236vqzUkzm7bgy7fmWY0JszVn1AQLHL55Uo7_Z2D_5wyvvkFOtmRxlVSDLgRWtJdecmtdrODybd0BA"
+  "version": "1.5.7",
+  "url": "https://github.com/paintballsavage12/Rust-TC-Studio/releases/download/v1.5.7/RustPilot.exe",
+  "size": 9428480,
+  "sha256": "c732c3cdd7edef26c7df72e06e9b431493f70db3f01b9afe5104a140af9c386d",
+  "signature": "pvOqFT2--yDR80PcTmds1BJvqJO5Lh_MQtak83qZw--jeQR44NRjQZGKkCmKewY4sxqbbboGqaVKqLlaITEECg"
 }
